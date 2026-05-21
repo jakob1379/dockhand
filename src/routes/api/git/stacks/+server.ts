@@ -9,6 +9,7 @@ import {
 	upsertStackSource,
 	setStackEnvVars,
 	getStackSource,
+	getComposePathsValidationError,
 	normalizeComposePaths
 } from '$lib/server/db';
 import { deployGitStack } from '$lib/server/git';
@@ -48,6 +49,17 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const data = await request.json();
 		const composePaths = normalizeComposePaths(data.composePaths ?? data.composePath ?? 'compose.yaml');
+		const composePathsError = getComposePathsValidationError(composePaths);
+		if (composePathsError) {
+			return json({ error: composePathsError }, { status: 400 });
+		}
+		const envFilePath = data.envFilePath ? normalizeComposePaths(data.envFilePath)[0] : null;
+		if (envFilePath) {
+			const envFilePathError = getComposePathsValidationError([envFilePath], 'env file path');
+			if (envFilePathError) {
+				return json({ error: envFilePathError }, { status: 400 });
+			}
+		}
 
 		// Permission check with environment context
 		if (auth.authEnabled && !await auth.can('stacks', 'create', data.environmentId || undefined)) {
@@ -117,7 +129,7 @@ export const POST: RequestHandler = async (event) => {
 			repositoryId: repositoryId,
 			composePath: composePaths[0],
 			composePaths,
-			envFilePath: data.envFilePath || null,
+			envFilePath,
 			autoUpdate: data.autoUpdate || false,
 			autoUpdateSchedule: data.autoUpdateSchedule || 'daily',
 			autoUpdateCron: data.autoUpdateCron || '0 3 * * *',

@@ -10,6 +10,7 @@ import {
 	updateGitStack,
 	upsertStackSource,
 	getEnvironment,
+	assertValidComposePaths,
 	normalizeComposePaths,
 	type GitRepository,
 	type GitCredential,
@@ -393,6 +394,7 @@ function readGitStackComposeFiles(
 	logPrefix?: string
 ): GitStackComposeFiles {
 	const composePaths = getGitStackComposePaths(gitStack);
+	assertValidComposePaths(composePaths);
 	const absoluteComposePaths = composePaths.map(path => join(repoPath, path));
 
 	for (let i = 0; i < absoluteComposePaths.length; i++) {
@@ -1568,6 +1570,12 @@ interface PreviewEnvResult {
  */
 export async function previewRepoEnvFiles(options: PreviewEnvOptions): Promise<PreviewEnvResult> {
 	const { repoUrl, branch, credential, composePath, envFilePath } = options;
+	const normalizedComposePath = normalizeComposePaths(composePath)[0];
+	assertValidComposePaths([normalizedComposePath]);
+	const normalizedEnvFilePath = envFilePath ? normalizeComposePaths(envFilePath)[0] : null;
+	if (normalizedEnvFilePath) {
+		assertValidComposePaths([normalizedEnvFilePath]);
+	}
 	const logPrefix = '[Git:Preview]';
 
 	// Create a unique temp directory
@@ -1608,7 +1616,7 @@ export async function previewRepoEnvFiles(options: PreviewEnvOptions): Promise<P
 		console.log(`${logPrefix} Clone successful`);
 
 		// Determine the compose directory (where .env file should be)
-		const composeDir = dirname(composePath);
+		const composeDir = dirname(normalizedComposePath);
 		const baseEnvPath = join(tempDir, composeDir, '.env');
 
 		const vars: Record<string, string> = {};
@@ -1629,8 +1637,8 @@ export async function previewRepoEnvFiles(options: PreviewEnvOptions): Promise<P
 		}
 
 		// Read additional env file if specified
-		if (envFilePath) {
-			const additionalEnvPath = join(tempDir, envFilePath);
+		if (normalizedEnvFilePath) {
+			const additionalEnvPath = join(tempDir, normalizedEnvFilePath);
 			if (existsSync(additionalEnvPath)) {
 				console.log(`${logPrefix} Reading additional env file: ${additionalEnvPath}`);
 				const content = readFileSync(additionalEnvPath, 'utf-8');
@@ -1639,7 +1647,7 @@ export async function previewRepoEnvFiles(options: PreviewEnvOptions): Promise<P
 					vars[key] = value;
 					sources[key] = 'envFile';
 				}
-				console.log(`${logPrefix} Found ${Object.keys(additionalVars).length} vars in ${envFilePath}`);
+				console.log(`${logPrefix} Found ${Object.keys(additionalVars).length} vars in ${normalizedEnvFilePath}`);
 			} else {
 				console.log(`${logPrefix} Additional env file not found: ${additionalEnvPath}`);
 			}

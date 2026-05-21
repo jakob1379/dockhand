@@ -79,11 +79,11 @@ import {
 import type { AllGridPreferences, GridId, GridColumnPreferences } from '$lib/types';
 import { encrypt, decrypt } from './encryption.js';
 import { parseEnvInterpolation } from './env-interpolation';
-import { DEFAULT_COMPOSE_PATH, normalizeComposePaths } from './compose-paths';
+import { assertValidComposePaths, DEFAULT_COMPOSE_PATH, normalizeComposePaths } from './compose-paths';
 
 // Re-export for backwards compatibility
 export { db, isPostgres, isSqlite };
-export { normalizeComposePaths } from './compose-paths';
+export { assertValidComposePaths, getComposePathsValidationError, normalizeComposePaths } from './compose-paths';
 export type {
 	Environment,
 	Registry,
@@ -2536,13 +2536,20 @@ export async function createGitStack(data: {
 	forceRedeploy?: boolean;
 }): Promise<GitStackWithRepo> {
 	const composePaths = normalizeComposePaths(data.composePaths, data.composePath || 'compose.yaml');
+	assertValidComposePaths(composePaths);
+	const envFilePath = data.envFilePath
+		? normalizeComposePaths(data.envFilePath)[0]
+		: null;
+	if (envFilePath) {
+		assertValidComposePaths([envFilePath], 'env file path');
+	}
 	const result = await db.insert(gitStacks).values({
 		stackName: data.stackName,
 		environmentId: data.environmentId ?? null,
 		repositoryId: data.repositoryId,
 		composePath: composePaths[0],
 		composePaths: serializeComposePaths(composePaths),
-		envFilePath: data.envFilePath || null,
+		envFilePath,
 		contextDir: data.contextDir || null,
 		autoUpdate: data.autoUpdate || false,
 		autoUpdateSchedule: data.autoUpdateSchedule || 'daily',
@@ -2564,10 +2571,17 @@ export async function updateGitStack(id: number, data: Partial<GitStackData>): P
 	if (data.repositoryId !== undefined) updateData.repositoryId = data.repositoryId;
 	if (data.composePath !== undefined || data.composePaths !== undefined) {
 		const composePaths = normalizeComposePaths(data.composePaths ?? data.composePath, data.composePath || 'compose.yaml');
+		assertValidComposePaths(composePaths);
 		updateData.composePath = composePaths[0];
 		updateData.composePaths = serializeComposePaths(composePaths);
 	}
-	if (data.envFilePath !== undefined) updateData.envFilePath = data.envFilePath;
+	if (data.envFilePath !== undefined) {
+		const envFilePath = data.envFilePath ? normalizeComposePaths(data.envFilePath)[0] : null;
+		if (envFilePath) {
+			assertValidComposePaths([envFilePath], 'env file path');
+		}
+		updateData.envFilePath = envFilePath;
+	}
 	if (data.autoUpdate !== undefined) updateData.autoUpdate = data.autoUpdate;
 	if (data.autoUpdateSchedule !== undefined) updateData.autoUpdateSchedule = data.autoUpdateSchedule;
 	if (data.autoUpdateCron !== undefined) updateData.autoUpdateCron = data.autoUpdateCron;

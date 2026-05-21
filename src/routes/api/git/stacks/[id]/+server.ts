@@ -10,6 +10,7 @@ import {
 	setStackEnvVars,
 	getStackEnvVars,
 	deleteStackEnvVars,
+	getComposePathsValidationError,
 	normalizeComposePaths
 } from '$lib/server/db';
 import { deleteGitStackFiles, deployGitStack } from '$lib/server/git';
@@ -61,8 +62,21 @@ export const PUT: RequestHandler = async (event) => {
 		}
 
 		const data = await request.json();
-		const requestedComposePaths = data.composePaths ?? (data.composePath ? data.composePath : existing.composePaths);
-		const composePaths = normalizeComposePaths(requestedComposePaths);
+		const requestedComposePaths = data.composePaths ?? (data.composePath ? data.composePath : existing.composePaths ?? existing.composePath);
+		const composePaths = normalizeComposePaths(requestedComposePaths, existing.composePath);
+		const composePathsError = getComposePathsValidationError(composePaths);
+		if (composePathsError) {
+			return json({ error: composePathsError }, { status: 400 });
+		}
+		const envFilePath = data.envFilePath !== undefined && data.envFilePath !== null
+			? normalizeComposePaths(data.envFilePath)[0]
+			: data.envFilePath;
+		if (envFilePath) {
+			const envFilePathError = getComposePathsValidationError([envFilePath], 'env file path');
+			if (envFilePathError) {
+				return json({ error: envFilePathError }, { status: 400 });
+			}
+		}
 
 		// Validate stack name if it's being changed
 		if (data.stackName !== undefined) {
@@ -81,7 +95,7 @@ export const PUT: RequestHandler = async (event) => {
 			stackName: data.stackName,
 			composePath: composePaths[0],
 			composePaths,
-			envFilePath: data.envFilePath,
+			envFilePath,
 			autoUpdate: data.autoUpdate,
 			autoUpdateSchedule: data.autoUpdateSchedule,
 			autoUpdateCron: data.autoUpdateCron,
